@@ -1,0 +1,8 @@
+mod_loader: "fabric"
+version: "26.2"
+mods:
+  - id: sodium
+    source: modrinth
+  - id: fabric-api
+    source: modrinth
+  

@@ -1,0 +1,9 @@
+[package]
+name = "yamm"
+version = "0.1.0"
+edition = "2024"
+description = "Yet Another Mod Manager"
+
+[dependencies]
+"serde" = { version = "1.0.229", features = ["derive"] } 
+"yaml_serde" = "0.10.4"
