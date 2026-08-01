@@ -39,6 +39,16 @@ async fn pull_mod(mod_: &Mod) -> Result<(), Box<dyn error::Error>> {
     Result::Ok(())
 }
 
+fn load_yaml(file_path: &str) -> Result<Config, String> {
+    let content = std::fs::read_to_string(file_path)
+        .map_err(|e| format!("Failed to read YAML: {}", e))?;
+
+    let config: Config = yaml_serde::from_str(&content)
+        .map_err(|e| format!("Invalid YAML format: {}", e))?;
+
+    Ok(config)
+}
+
 #[tokio::main]
 async fn main() {
     println!("YAMM Test");
@@ -67,4 +77,16 @@ async fn main() {
         Result::Ok(s) => println!("{}", s),
         Result::Err(_) => println!("failed")
     };
+
+    let new_config: Config = match load_yaml("test.yaml") {
+        Ok(c) => c,
+        Err(_) => Config {..config}
+    };
+
+    let config_str = yaml_serde::to_string(&new_config);
+    match config_str {
+        Result::Ok(s) => println!("{}", s),
+        Result::Err(_) => println!("failed")
+    };
+
 }

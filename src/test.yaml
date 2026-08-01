@@ -5,4 +5,5 @@ mods:
     source: modrinth
   - id: fabric-api
     source: modrinth
-  
+  - id: cool-mod
+    source: modrinth
