@@ -27,16 +27,41 @@ struct Config {
     mods: Vec<Mod>
 }
 
-async fn pull_mod(mod_: &Mod) -> Result<(), Box<dyn error::Error>> {
+#[derive(Debug, Deserialize)]
+struct ModFile {
+    url: String,
+    filename: String,
+    primary: bool
+}
+
+impl fmt::Display for ModFile {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{{ {}, {}, {} }}", self.url, self.filename, self.primary)
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct ModVersion {
+    id: String,
+    name: String,
+    version_number: String,
+    game_versions: Vec<String>,
+    files: Vec<ModFile>,
+}
+
+//https://cdn.modrinth.com/data/P7dR8mSH/versions/3gT0I5vt/fabric-api-0.156.0%2B26.2.jar?mr_download_reason=standalone&mr_game_version=26.2&mr_loader=fabric
+async fn pull_mod(mod_: &Mod, target_version: &str) -> Result<Option<ModVersion>, Box<dyn error::Error>> {
     if mod_.source != "modrinth" {
         return Result::Err(InvalidSourceError.into());
     }
-    let resp = reqwest::get(format!("https://staging-api.modrinth.com/v2/project/{}", mod_.id))
+    let resp: Vec<ModVersion> = reqwest::get(format!("https://api.modrinth.com/v2/project/{}/version", mod_.id))
         .await?
-        .json::<serde_json::Value>()
+        .json()
         .await?;
-    println!("{resp:#?}");
-    Result::Ok(())
+    let matching_version = resp.into_iter().find(|v| {
+        v.game_versions.iter().any(|ver| ver == target_version)
+    });
+    Result::Ok(matching_version)
 }
 
 fn load_yaml(file_path: &str) -> Result<Config, String> {
@@ -58,9 +83,13 @@ async fn main() {
         source: String::from("modrinth")
     });
 
-    if let Err(e) = pull_mod(&mods[0]).await {
-        eprintln!("failed to pull fabric-api: {e}");
-    }
+    let fabric_api_mod= match pull_mod(&mods[0], "26.2").await {
+            Ok(res) => match res {
+                Some(mod_version) => println!("retrieved mod {} with files {}", mod_version.name, mod_version.files[0]),
+                _ => eprintln!("no such mod found")
+            },
+            Err(e) => eprintln!("failed to pull fabric-api: {e}")
+        };
     
     mods.push(Mod{
         id: String::from("sodium"),
