@@ -1,3 +1,4 @@
+use reqwest::Request;
 use serde::{Deserialize, Serialize};
 use std::result::Result;
 use std::fmt;
@@ -49,7 +50,6 @@ struct ModVersion {
     files: Vec<ModFile>,
 }
 
-//https://cdn.modrinth.com/data/P7dR8mSH/versions/3gT0I5vt/fabric-api-0.156.0%2B26.2.jar?mr_download_reason=standalone&mr_game_version=26.2&mr_loader=fabric
 async fn pull_mod(mod_: &Mod, target_version: &str) -> Result<Option<ModVersion>, Box<dyn error::Error>> {
     if mod_.source != "modrinth" {
         return Result::Err(InvalidSourceError.into());
@@ -64,6 +64,20 @@ async fn pull_mod(mod_: &Mod, target_version: &str) -> Result<Option<ModVersion>
     Result::Ok(matching_version)
 }
 
+async fn pull_mod_file(mod_: &Mod, target_version: &str) -> Result<Option<String>, Box<dyn error::Error>> {
+    if let Ok(Some(version)) = pull_mod(mod_, target_version).await {
+        let download_file = version
+            .files
+            .iter()
+            .find(|f| f.primary)
+            .or_else(|| version.files.first());
+        
+        return Ok(download_file.map(|f| f.url.clone()));
+    }
+
+    Ok(None)
+}
+
 fn load_yaml(file_path: &str) -> Result<Config, String> {
     let content = std::fs::read_to_string(file_path)
         .map_err(|e| format!("Failed to read YAML: {}", e))?;
@@ -72,6 +86,30 @@ fn load_yaml(file_path: &str) -> Result<Config, String> {
         .map_err(|e| format!("Invalid YAML format: {}", e))?;
 
     Ok(config)
+}
+
+async fn download_from_url(url: &str, output_dir: &str) -> Result<(), Box<dyn error::Error>> {
+    if let Ok(false) = std::fs::exists(output_dir) {
+        let _ = std::fs::create_dir(output_dir);
+    }
+
+    let parts =  url.split("/");
+    let filename = match parts.last() {
+        Some(s) => s,
+        _ => {return Err(format!("no file at url {url}").into()); ""}
+    };
+
+    let dest_path = std::path::Path::new(output_dir).join(filename);
+
+    let resp = reqwest::get(url).await?;
+
+    if !resp.status().is_success() {
+        return Err(format!("HTTP error status: {}", resp.status()).into());
+    }
+
+
+
+    Result::Ok(())
 }
 
 #[tokio::main]
@@ -83,13 +121,9 @@ async fn main() {
         source: String::from("modrinth")
     });
 
-    let fabric_api_mod= match pull_mod(&mods[0], "26.2").await {
-            Ok(res) => match res {
-                Some(mod_version) => println!("retrieved mod {} with files {}", mod_version.name, mod_version.files[0]),
-                _ => eprintln!("no such mod found")
-            },
-            Err(e) => eprintln!("failed to pull fabric-api: {e}")
-        };
+    if let Ok(Some(url)) = pull_mod_file(&mods[0], "26.2").await {
+        println!("download url for mod: {url}");
+    }
     
     mods.push(Mod{
         id: String::from("sodium"),
