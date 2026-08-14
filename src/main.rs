@@ -4,6 +4,7 @@ use std::result::Result;
 use std::fmt;
 use std::error;
 use tokio::fs;
+use futures::future;
 
 #[derive(Debug, Clone)]
 struct InvalidSourceError;
@@ -184,9 +185,11 @@ async fn main() {
         Result::Err(_) => println!("failed")
     };
 
-    match pull_and_save_mod(&new_config.mods[0], &new_config.version, "./output_dir").await {
-        Result::Ok(_) => println!("downloaded Successfully"),
-        _ => println!("failed")
-    }
+    // match pull_and_save_mod(&new_config.mods[0], &new_config.version, "./output_dir").await {
+    //     Result::Ok(_) => println!("downloaded Successfully"),
+    //     _ => println!("failed")
+    // }
+
+    let _ = future::try_join_all(new_config.mods.iter().map(|mod_| pull_and_save_mod(&mod_, &new_config.version, "./output_dir"))).await.unwrap();
 
 }
