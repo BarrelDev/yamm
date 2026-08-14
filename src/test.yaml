@@ -5,3 +5,7 @@ mods:
     source: modrinth
   - id: fabric-api
     source: modrinth
+  - id: lithium
+    source: modrinth
+  - id: cloth-config
+    source: modrinth

@@ -17,7 +17,7 @@ impl fmt::Display for InvalidSourceError {
 
 impl error::Error for InvalidSourceError {}
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 struct Mod {
     id: String,
     source: String
@@ -28,6 +28,12 @@ struct Config {
     mod_loader: String,
     version: String,
     mods: Vec<Mod>
+}
+
+impl fmt::Display for Config {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{{ {}, {}, {:?} }}", self.mod_loader, self.version, self.mods)
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -49,6 +55,7 @@ struct ModVersion {
     name: String,
     version_number: String,
     game_versions: Vec<String>,
+    loaders: Vec<String>,
     files: Vec<ModFile>,
 }
 
@@ -87,6 +94,8 @@ fn load_yaml(file_path: &str) -> Result<Config, String> {
     let config: Config = yaml_serde::from_str(&content)
         .map_err(|e| format!("Invalid YAML format: {}", e))?;
 
+    println!("config bro: {}", config);
+
     Ok(config)
 }
 
@@ -114,6 +123,7 @@ async fn download_from_url(url: &str, output_dir: &str, filename: &str) -> Resul
 async fn pull_and_save_mod(
     mod_: &Mod,
     target_version: &str,
+    target_platform: &str,
     output_dir: &str,
 ) -> Result<(), Box<dyn error::Error>> {
     if mod_.source != "modrinth" {
@@ -130,7 +140,10 @@ async fn pull_and_save_mod(
 
     let matched_version = versions
     .into_iter()
-    .find(|v| v.game_versions.iter().any(|ver| ver == target_version))
+    .find(|v| {
+        v.game_versions.iter().any(|ver| ver == target_version) &&
+        v.loaders.iter().any(|loader| loader.to_lowercase() == target_platform)
+    })
     .ok_or("No matching version found")?;
 
     let mod_file = matched_version
@@ -174,7 +187,7 @@ async fn main() {
         Result::Err(_) => println!("failed")
     };
 
-    let new_config: Config = match load_yaml("test.yaml") {
+    let new_config: Config = match load_yaml("./src/test.yaml") {
         Ok(c) => c,
         Err(_) => Config {..config}
     };
@@ -190,6 +203,6 @@ async fn main() {
     //     _ => println!("failed")
     // }
 
-    let _ = future::try_join_all(new_config.mods.iter().map(|mod_| pull_and_save_mod(&mod_, &new_config.version, "./output_dir"))).await.unwrap();
+    let _ = future::try_join_all(new_config.mods.iter().map(|mod_| pull_and_save_mod(&mod_, &new_config.version, &new_config.mod_loader, "./output_dir"))).await.unwrap();
 
 }
