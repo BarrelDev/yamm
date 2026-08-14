@@ -1,8 +1,9 @@
-use reqwest::Request;
 use serde::{Deserialize, Serialize};
+use tokio::io::AsyncWriteExt;
 use std::result::Result;
 use std::fmt;
 use std::error;
+use tokio::fs;
 
 #[derive(Debug, Clone)]
 struct InvalidSourceError;
@@ -88,16 +89,8 @@ fn load_yaml(file_path: &str) -> Result<Config, String> {
     Ok(config)
 }
 
-async fn download_from_url(url: &str, output_dir: &str) -> Result<(), Box<dyn error::Error>> {
-    if let Ok(false) = std::fs::exists(output_dir) {
-        let _ = std::fs::create_dir(output_dir);
-    }
-
-    let parts =  url.split("/");
-    let filename = match parts.last() {
-        Some(s) => s,
-        _ => {return Err(format!("no file at url {url}").into()); ""}
-    };
+async fn download_from_url(url: &str, output_dir: &str, filename: &str) -> Result<(), Box<dyn error::Error>> {
+    let _ = fs::create_dir_all(output_dir).await?;
 
     let dest_path = std::path::Path::new(output_dir).join(filename);
 
@@ -107,7 +100,46 @@ async fn download_from_url(url: &str, output_dir: &str) -> Result<(), Box<dyn er
         return Err(format!("HTTP error status: {}", resp.status()).into());
     }
 
+    let mut file = fs::File::create(&dest_path).await?;
 
+    let bytes = resp.bytes().await?;
+    file.write_all(&bytes).await?;
+
+    println!("Successfully downloaded to: {:?}", dest_path);
+
+    Result::Ok(())
+}
+
+async fn pull_and_save_mod(
+    mod_: &Mod,
+    target_version: &str,
+    output_dir: &str,
+) -> Result<(), Box<dyn error::Error>> {
+    if mod_.source != "modrinth" {
+        return Err("Invalid Source".into());
+    }
+
+    let versions: Vec<ModVersion> = reqwest::get(format!(
+        "https://api.modrinth.com/v2/project/{}/version",
+        mod_.id
+    ))
+    .await?
+    .json()
+    .await?;
+
+    let matched_version = versions
+    .into_iter()
+    .find(|v| v.game_versions.iter().any(|ver| ver == target_version))
+    .ok_or("No matching version found")?;
+
+    let mod_file = matched_version
+        .files
+        .iter()
+        .find(|f| f.primary)
+        .or_else(|| matched_version.files.first())
+        .ok_or("No files available for this version.")?;
+
+    download_from_url(&mod_file.url, output_dir, &mod_file.filename).await?;
 
     Result::Ok(())
 }
@@ -151,5 +183,10 @@ async fn main() {
         Result::Ok(s) => println!("{}", s),
         Result::Err(_) => println!("failed")
     };
+
+    match pull_and_save_mod(&new_config.mods[0], &new_config.version, "./output_dir").await {
+        Result::Ok(_) => println!("downloaded Successfully"),
+        _ => println!("failed")
+    }
 
 }
